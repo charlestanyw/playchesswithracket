@@ -1,0 +1,289 @@
+#lang racket
+(require racket/gui)
+
+;; ==========================INITIALISATIONS=================================
+;; board constants --------
+(define BOARD-SIZE 8)
+(define SQUARE-SIZE 60)
+
+;; data structures --------
+(struct piece (type color) #:transparent)
+
+;; initial setup --------
+(define board
+  (vector
+   ;; black pieces
+   (vector (piece 'rook 'black) (piece 'knight 'black) (piece 'bishop 'black)
+           (piece 'queen 'black) (piece 'king 'black) (piece 'bishop 'black)
+           (piece 'knight 'black) (piece 'rook 'black))
+   (build-vector BOARD-SIZE (λ (_) (piece 'pawn 'black)))
+   
+   ;; empty rows
+   (build-vector BOARD-SIZE (λ (_) #f))
+   (build-vector BOARD-SIZE (λ (_) #f))
+   (build-vector BOARD-SIZE (λ (_) #f))
+   (build-vector BOARD-SIZE (λ (_) #f))
+
+   ;; white pieces
+   (build-vector BOARD-SIZE (λ (_) (piece 'pawn 'white)))
+   (vector (piece 'rook 'white) (piece 'knight 'white) (piece 'bishop 'white)
+           (piece 'queen 'white) (piece 'king 'white) (piece 'bishop 'white)
+           (piece 'knight 'white) (piece 'rook 'white))))
+
+;; starting states ---------
+(define turn 'white)
+(define selected-pos #f)
+(define first-clicked-pos #f)
+(define game-over? #f)
+
+;; pieces and unicode symbols --------
+(define (piece-symbol p)
+  (match (list (piece-type p) (piece-color p))
+    [(list 'king   'white) #\♔]
+    [(list 'queen  'white) #\♕]
+    [(list 'rook   'white) #\♖]
+    [(list 'bishop 'white) #\♗]
+    [(list 'knight 'white) #\♘]
+    [(list 'pawn   'white) #\♙]
+    [(list 'king   'black) #\♚]
+    [(list 'queen  'black) #\♛]
+    [(list 'rook   'black) #\♜]
+    [(list 'bishop 'black) #\♝]
+    [(list 'knight 'black) #\♞]
+    [(list 'pawn   'black) #\♟]))
+
+
+
+
+
+
+;; ============= MOVEMENT RULES AND CHECKER ===================
+;; clear path check -------- (car for first element (x coordinate), cdr for last(remaining) element (y coordinate))
+(define (clear-path? from to)
+  (define-values (fr fc) (values (car from) (cdr from)))
+  (define-values (tr tc) (values (car to) (cdr to)))
+  (define dr (sgn (- tr fr))) ; direction row
+  (define dc (sgn (- tc fc))) ; direction col
+
+  ;; invalid for sliding piece (non straight non diag)
+  (when (not (or (zero? dr) (zero? dc) (= (abs (- tr fr)) (abs (- tc fc)))))
+    (error 'clear-path? "invalid path"))
+
+  ;; obstruction check
+  (let loop ((r (+ fr dr)) (c (+ fc dc)))
+    (cond
+      [(and (= r tr) (= c tc)) #t] ; reached destination
+      [(vector-ref (vector-ref board r) c) #f] ; obstruction
+      [else (loop (+ r dr) (+ c dc))])))
+
+
+
+
+
+
+;; end game king checker --------
+(define (check-game-over!)
+  (define found-white? #f)
+  (define found-black? #f)
+  (for ([row board])
+    (for ([i (in-vector row)])
+      (when i
+        (match (piece-type i)
+          ['king
+           (if (eq? (piece-color i) 'white)
+               (set! found-white? #t)
+               (set! found-black? #t))]
+          [_ (void)]))))
+  (cond
+    [(not found-white?)
+     (set! game-over? #t)
+     (message-box "Game Over" "Black wins!" #f '(ok))]
+    [(not found-black?)
+     (set! game-over? #t)
+     (message-box "Game Over" "White wins!" #f '(ok))]))
+
+
+
+
+
+
+;; pawn move --------
+(define (valid-pawn-move? piece from to)
+  (define-values (from-row from-col) (values (car from) (cdr from)))
+  (define-values (to-row to-col) (values (car to) (cdr to)))
+  (define direction (if (eq? (piece-color piece) 'white) -1 1))
+  (define piece-at-dest (vector-ref (vector-ref board to-row) to-col))
+
+  (cond
+    ;; 1 forward
+    [(and (= from-col to-col)
+          (= (+ from-row direction) to-row)
+          (not piece-at-dest))
+     #t]
+    ;; 2 forward from base rank
+    [(and (= from-col to-col)
+          (= (+ from-row (* 2 direction)) to-row)
+          (not piece-at-dest)
+          (or (and (eq? (piece-color piece) 'white) (= from-row 6))
+              (and (eq? (piece-color piece) 'black) (= from-row 1))))
+     #t]
+    ;; diag capture
+    [(and (= (abs (- from-col to-col)) 1)
+          (= (+ from-row direction) to-row)
+          piece-at-dest
+          (not (eq? (piece-color piece-at-dest) (piece-color piece))))
+     #t]
+    [else #f]))
+
+;; knight move --------
+(define (valid-knight-move? piece from to)
+  (define-values (fr fc) (values (car from) (cdr from)))
+  (define-values (tr tc) (values (car to) (cdr to)))
+  (define dr (abs (- fr tr)))
+  (define dc (abs (- fc tc)))
+  (define target-piece (vector-ref (vector-ref board tr) tc))
+  (and (member (list dr dc) '((2 1) (1 2)))
+       (or (not target-piece)
+           (not (eq? (piece-color target-piece) (piece-color piece))))))
+
+;; bishop move --------
+(define (valid-bishop-move? piece from to)
+  (define-values (fr fc) (values (car from) (cdr from)))
+  (define-values (tr tc) (values (car to) (cdr to)))
+  (define target-piece (vector-ref (vector-ref board tr) tc))
+  (and (= (abs (- fr tr)) (abs (- fc tc))) ; diagonal
+       (clear-path? from to)
+       (or (not target-piece)
+           (not (eq? (piece-color target-piece) (piece-color piece))))))
+
+;; rook move --------
+(define (valid-rook-move? piece from to)
+  (define-values (fr fc) (values (car from) (cdr from)))
+  (define-values (tr tc) (values (car to) (cdr to)))
+  (define target-piece (vector-ref (vector-ref board tr) tc))
+  (and (or (= fr tr) (= fc tc)) ; same row or column
+       (clear-path? from to)
+       (or (not target-piece)
+           (not (eq? (piece-color target-piece) (piece-color piece))))))
+
+;; queen move --------
+(define (valid-queen-move? piece from to)
+  (or (valid-bishop-move? piece from to)
+      (valid-rook-move? piece from to)))
+
+;; king move --------
+(define (valid-king-move? piece from to)
+  (define-values (fr fc) (values (car from) (cdr from)))
+  (define-values (tr tc) (values (car to) (cdr to)))
+  (define dr (abs (- fr tr)))
+  (define dc (abs (- fc tc)))
+  (define target-piece (vector-ref (vector-ref board tr) tc))
+  (and (<= dr 1) (<= dc 1) ; only move one square in any direction
+       (not (and (= dr 0) (= dc 0))) ; cannot stay in place
+       (or (not target-piece)
+           (not (eq? (piece-color target-piece) (piece-color piece))))))
+
+
+
+
+
+
+
+;; ==================== WOKING MECHANISMS=========================
+;; click handler --------
+(define my-canvas%
+  (class canvas%
+    (super-new)
+
+    (define/override (on-event event)
+      (when (and (send event button-down?) (not game-over?))
+        (define x (send event get-x))
+        (define y (send event get-y))
+        (define col (quotient x SQUARE-SIZE))
+        (define row (quotient y SQUARE-SIZE))
+        (define clicked (cons row col))
+        (define clicked-piece (vector-ref (vector-ref board row) col))
+
+        (cond
+          ;; first click to select own piece
+          [(not first-clicked-pos)
+           (when (and clicked-piece (eq? (piece-color clicked-piece) turn))
+             (set! first-clicked-pos clicked)
+             (set! selected-pos clicked))]
+
+          ;; second click to destination
+          [else
+           (define from first-clicked-pos)
+           (define-values (fr fc) (values (car from) (cdr from)))
+           (define moving-piece (vector-ref (vector-ref board fr) fc))
+
+           (when (and moving-piece
+                      (case (piece-type moving-piece)
+                        [(pawn) (valid-pawn-move? moving-piece from clicked)]
+                        [(knight) (valid-knight-move? moving-piece from clicked)]
+                        [(bishop) (valid-bishop-move? moving-piece from clicked)]
+                        [(rook) (valid-rook-move? moving-piece from clicked)]
+                        [(queen) (valid-queen-move? moving-piece from clicked)]
+                        [(king) (valid-king-move? moving-piece from clicked)]
+                        [else #f]))
+             ;; valid move checkkkkk, perform move
+             (vector-set! (vector-ref board row) col moving-piece)
+             (vector-set! (vector-ref board fr) fc #f)
+             (set! turn (if (eq? turn 'white) 'black 'white)) ; switch turns
+             (check-game-over!)) 
+
+           ;; state reset
+           (set! selected-pos #f)
+           (set! first-clicked-pos #f)])
+
+        (send this refresh)))))
+
+
+
+
+
+
+;; ======================== CHESS BOARD ===================================
+;; canvas --------
+(define frame (new frame% [label "Racket Chess"]))
+(define canvas
+  (new my-canvas%
+       [parent frame]
+       [min-width (* BOARD-SIZE SQUARE-SIZE)]
+       [min-height (* BOARD-SIZE SQUARE-SIZE)]
+       [paint-callback
+        (λ (canvas dc)
+          ;; chessboard squares
+          (for ([row (in-range BOARD-SIZE)])
+            (for ([col (in-range BOARD-SIZE)])
+              (define x (* col SQUARE-SIZE))
+              (define y (* row SQUARE-SIZE))
+              (define dark? (odd? (+ row col)))
+              (send dc set-brush (if dark? "gray" "white") 'solid)
+              (send dc draw-rectangle x y SQUARE-SIZE SQUARE-SIZE)))
+
+          ;; red highlight on selection
+          (when selected-pos
+            (define sel-row (car selected-pos))
+            (define sel-col (cdr selected-pos))
+            (define x (* sel-col SQUARE-SIZE))
+            (define y (* sel-row SQUARE-SIZE))
+            (send dc set-pen "red" 3 'solid)
+            (send dc draw-rectangle x y SQUARE-SIZE SQUARE-SIZE)
+            (send dc set-pen "black" 1 'solid))
+
+          ;; pieces
+          (for ([row (in-range BOARD-SIZE)])
+            (for ([col (in-range BOARD-SIZE)])
+              (define p (vector-ref (vector-ref board row) col))
+              (when p
+                (define symbol (piece-symbol p))
+                (define x (+ (* col SQUARE-SIZE) 20))
+                (define y (+ (* row SQUARE-SIZE) 15))
+                (send dc set-font (make-object font% 28 'modern 'normal 'bold))
+                (send dc draw-text (string symbol) x y)))))]))
+
+
+
+
+(send frame show #t)

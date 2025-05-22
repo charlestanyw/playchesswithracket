@@ -7,97 +7,75 @@
 
 (define SQUARE-SIZE 60)
 (define game (make-game-state))
-(define selected-piece #f)
-(define possible-moves '())
 
-(define frame (new frame%
-                   [label "Chess"]
-                   [width (* 8 SQUARE-SIZE)]
-                   [height (* 8 SQUARE-SIZE)]))
+(define frame (new frame% [label "Chess"] [width (* 8 SQUARE-SIZE)] [height (* 8 SQUARE-SIZE)]))
 
-;; Draw the chessboard and pieces
+(define chess-canvas%
+  (class canvas%
+    (super-new)
+    (define/override (on-event event)
+      (when (and (send event button-down? 'left) (not (game-state-game-over? game)))
+        (define x (send event get-x))
+        (define y (send event get-y))
+        (define row (quotient y SQUARE-SIZE))
+        (define col (quotient x SQUARE-SIZE))
+        (when (and (<= 0 row 7) (<= 0 col 7))
+          (handle-click row col))))))
+
 (define (draw-board dc)
   ;; Draw chess board squares
   (for ([row (in-range 8)])
     (for ([col (in-range 8)])
       (define x (* col SQUARE-SIZE))
       (define y (* row SQUARE-SIZE))
-      (send dc set-brush
-            (if (even? (+ row col))
-                "light gray"
-                "white")
-            'solid)
-      (send dc draw-rectangle x y SQUARE-SIZE SQUARE-SIZE)
+      (send dc set-brush (if (even? (+ row col)) "light gray" "white") 'solid)
+      (send dc draw-rectangle x y SQUARE-SIZE SQUARE-SIZE)))
 
-      ;; Highlight possible moves
-      (when (member (cons row col) possible-moves)
-        (send dc set-brush "light green" 'solid)
-        (send dc draw-rectangle x y SQUARE-SIZE SQUARE-SIZE))))
+  ;; Highlighting selected cell
+  (define selected (game-state-selected-pos game))
+  (when selected
+    (define x (* (cdr selected) SQUARE-SIZE))
+    (define y (* (car selected) SQUARE-SIZE))
+    (send dc set-pen "red" 3 'solid)
+    (send dc set-brush (send the-brush-list find-or-create-brush "red" 'transparent))
+    (send dc draw-rectangle x y SQUARE-SIZE SQUARE-SIZE)
+    (send dc set-pen "black" 1 'solid))
 
   ;; Draw pieces
   (for ([row (in-range 8)])
     (for ([col (in-range 8)])
       (define p (board-ref (game-state-board game) row col))
       (when p
-        (define x (+ (* col SQUARE-SIZE) 15))
-        (define y (+ (* row SQUARE-SIZE) 10))
-        (send dc set-font (make-object font% 36 'default))
+        (define x (+ (* col SQUARE-SIZE) 20))
+        (define y (+ (* row SQUARE-SIZE) 15))
+        (send dc set-font (make-object font% 28 'modern 'normal 'bold))
         (send dc draw-text (string (piece-symbol p)) x y)))))
 
-;; Create canvas-
-(define canvas
-  (new canvas%
-       [parent frame]
-       [paint-callback (λ (_ dc) (draw-board dc))]))
 
-;; Handle mouse click
+;; Handling mouse clicks
 (define (handle-click row col)
-  (define piece (get-piece-at game row col))
+  (define clicked-pos (cons row col))
+  (define clicked-piece (board-ref (game-state-board game) row col))
+  (define first-clicked (game-state-first-clicked-pos game))
 
   (cond
-    ;; Selecting a piece
-    [(and (not selected-piece) piece (eq? (piece-color piece) (current-player game)))
-     (set! selected-piece (cons row col))
-     (set! possible-moves (get-valid-moves game row col))
-     (send canvas refresh)]
-
-    ;; Moving a selected piece
-    [(and selected-piece (member (cons row col) possible-moves))
-     (move-piece! game (car selected-piece) (cdr selected-piece) row col)
-     (set! selected-piece #f)
-     (set! possible-moves '())
-     (send canvas refresh)]
-
-    ;; Canceling selection
+    [(not first-clicked)
+     (when (and clicked-piece (eq? (piece-color clicked-piece) (game-state-turn game)))
+       (set-game-state-first-clicked-pos! game clicked-pos)
+       (set-game-state-selected-pos! game clicked-pos))]
+    
     [else
-     (set! selected-piece #f)
-     (set! possible-moves '())
-     (send canvas refresh)]))
+     (define from first-clicked)
+     (define moving-piece (board-ref (game-state-board game) (car from) (cdr from)))
+     
+     (when (and moving-piece (valid-move? (game-state-board game) moving-piece from clicked-pos))
+       (move-piece! game (car from) (cdr from) row col))
+     
+     (set-game-state-first-clicked-pos! game #f)
+     (set-game-state-selected-pos! game #f)])
+  
+  (send canvas refresh))
 
-;; Connect mouse events to canvas
-(send canvas on-event
-      (λ (event)
-        (when (send event button-down? 'left)
-          (define x (send event get-x))
-          (define y (send event get-y))
-          (define row (quotient y SQUARE-SIZE))
-          (define col (quotient x SQUARE-SIZE))
-          (when (and (<= 0 row 7) (<= 0 col 7))
-            (handle-click row col)))))
 
-;; Utility functions
-(define (current-player g) (game-state-turn g))
-(define (get-piece-at g row col) (board-ref (game-state-board g) row col))
-
-(define (get-valid-moves gs row col)
-  (define piece (board-ref (game-state-board gs) row col))
-  (define from (cons row col))
-
-  (filter
-   (λ (to) (valid-move? (game-state-board gs) piece from to))
-   (append-map
-    (λ (r) (map (λ (c) (cons r c)) (range 8)))
-    (range 8))))
-
-;; Show the window
+(define canvas (new chess-canvas% [parent frame] [paint-callback (λ (_ dc) (draw-board dc))]))
 (send frame show #t)

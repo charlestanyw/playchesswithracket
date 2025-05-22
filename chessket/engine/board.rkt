@@ -1,7 +1,5 @@
 #lang racket
-
 (provide (all-defined-out))
-(provide piece piece? piece-type piece-color) 
 
 (struct piece (type color) #:transparent)
 (define BOARD-SIZE 8)
@@ -11,11 +9,11 @@
        (< -1 col BOARD-SIZE)
        (vector-ref (vector-ref board row) col)))
 
-(define (make-empty-board)
-  (build-vector BOARD-SIZE (λ (_) (make-vector BOARD-SIZE #f))))
-
 (define (board-set! board row col val)
   (vector-set! (vector-ref board row) col val))
+
+(define (make-empty-board)
+  (build-vector BOARD-SIZE (λ (_) (make-vector BOARD-SIZE #f))))
 
 (define (make-standard-board)
   (vector
@@ -34,3 +32,5 @@
    (vector (piece 'rook 'white) (piece 'knight 'white) (piece 'bishop 'white)
            (piece 'queen 'white) (piece 'king 'white) (piece 'bishop 'white)
            (piece 'knight 'white) (piece 'rook 'white))))
+
+

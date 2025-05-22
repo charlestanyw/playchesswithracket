@@ -2,7 +2,7 @@
 (provide (all-defined-out))
 (require "../board.rkt")
 
-;; ==================== PATH CHECKING ====================
+;; Path checking
 (define (clear-path? board from to)
   (let* ([fr (car from)]
          [fc (cdr from)]
@@ -10,7 +10,7 @@
          [tc (cdr to)]
          [dr (sgn (- tr fr))]
          [dc (sgn (- tc fc))])
-    ;; Check path is straight or diagonal
+    ;; Check path (straight/ diagonal)
     (unless (or (zero? dr) (zero? dc) (= (abs (- tr fr)) (abs (- tc fc))))
       (error 'clear-path? "invalid path"))
 
@@ -21,7 +21,7 @@
         [(board-ref board r c) #f]
         [else (loop (+ r dr) (+ c dc))]))))
 
-;; ==================== MOVEMENT RULES ====================
+;; Movement rules
 (define (valid-move? board piece from to)
   (let* ([from-row (car from)]
          [from-col (cdr from)]

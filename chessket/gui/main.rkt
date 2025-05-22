@@ -1,9 +1,13 @@
 #lang racket
+;(require reprovide/reprovide)
+
 (require racket/gui
          "../engine/board.rkt"
          "../engine/pieces.rkt"
          "../engine/game.rkt"
          "../engine/rules/core.rkt")
+
+(provide (all-defined-out))
 
 (define SQUARE-SIZE 60)
 (define game (make-game-state))
@@ -79,3 +83,4 @@
 
 (define canvas (new chess-canvas% [parent frame] [paint-callback (λ (_ dc) (draw-board dc))]))
 (send frame show #t)
+

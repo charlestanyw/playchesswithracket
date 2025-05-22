@@ -1,0 +1,18 @@
+#lang racket
+(provide (all-defined-out))
+
+(require "board.rkt" "pieces.rkt")
+
+(struct game-state (board turn selected-pos game-over?) #:mutable)
+
+(define (make-game-state [board (make-standard-board)])
+  (game-state board 'white #f #f))
+
+(define (check-game-over! gs)
+  (define kings-alive (for*/fold ([kings '()])
+                        ([(row i) (in-indexed (game-state-board gs))]
+                         [(piece j) (in-indexed row)]
+                         #:when (and piece (eq? (piece-type piece) 'king)))
+                       (cons (piece-color piece) kings)))
+  (unless (and (member 'white kings-alive) (member 'black kings-alive))
+    (set-game-state-game-over?! gs #t)))

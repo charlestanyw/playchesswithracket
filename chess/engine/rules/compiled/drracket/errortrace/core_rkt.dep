@@ -1,0 +1,1 @@
+("8.16" tarm64osx ("ff23fa39c0b27eb993b43429895222853c3616df" . "3d695151873e59d31770fce8bda2a06c18b4fe6f") #"/Users/charles/Desktop/Odyssey/chess/engine/rules/../board.rkt" (collects #"drracket" #"private" #"drracket-errortrace-key.rkt") (collects #"racket" #"main.rkt") (collects #"racket" #"runtime-config.rkt"))

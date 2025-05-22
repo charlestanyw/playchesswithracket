@@ -1,0 +1,10 @@
+#lang racket
+(provide (all-defined-out))
+
+(define (clear-path? board from to)
+  ;; Implementation from your original code
+  ...)
+
+(define (valid-move? board piece from to)
+  ;; Base movement rules will call DSL-defined rules
+  ...)
